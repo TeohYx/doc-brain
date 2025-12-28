@@ -10,9 +10,37 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
+// CORS configuration - allow Vercel preview and production URLs
+const allowedOrigins = process.env.FRONTEND_URL 
+  ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+  : ['http://localhost:3000'];
+
+// Also allow any Vercel preview URLs (they contain the project name)
+const vercelPreviewPattern = /https:\/\/.*\.vercel\.app$/;
+
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } 
+    // Allow Vercel preview URLs (for preview deployments)
+    else if (vercelPreviewPattern.test(origin)) {
+      callback(null, true);
+    } 
+    else {
+      // Log for debugging
+      console.log('CORS blocked origin:', origin);
+      console.log('Allowed origins:', allowedOrigins);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 };
 app.use(cors(corsOptions));
 app.use(express.json());
