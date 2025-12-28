@@ -1,0 +1,13 @@
+// TODO List:
+// 1. Upload works
+//    - Ensure file uploads (PDF) are handled and stored correctly.
+// 2. Answers are accurate
+//    - Ensure any answers derived from PDFs are relevant and correct.
+// 3. Sources are shown
+//    - Display or return sources alongside answers, referencing corresponding PDF documents.
+// 4. Wrong questions are refused
+//    - Implement logic to reject or gracefully handle irrelevant or malformed questions.
+// 5. Data is isolated
+//    - Isolate user data and queries; ensure no unintended data access between users/sessions.
+
+1- done

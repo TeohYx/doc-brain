@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: doc-brain-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        sync: false
+
