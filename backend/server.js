@@ -92,8 +92,6 @@ db.exec(`
   )
 `);
 
-// Routes
-
 // Root route
 app.get('/', (req, res) => {
   res.json({ 
