@@ -104,7 +104,8 @@ app.get('/', (req, res) => {
       getAllPdfs: 'GET /api/pdfs',
       getPdfById: 'GET /api/pdfs/:id',
       downloadPdf: 'GET /api/pdfs/:id/download',
-      deletePdf: 'DELETE /api/pdfs/:id'
+      deletePdf: 'DELETE /api/pdfs/:id',
+      adminDatabase: 'GET /admin/database'
     }
   });
 });
@@ -162,6 +163,227 @@ app.get('/api/pdfs', (req, res) => {
   } catch (error) {
     console.error('Error fetching PDFs:', error);
     res.status(500).json({ error: 'Failed to fetch PDFs', details: error.message });
+  }
+});
+
+// Admin: View database table
+app.get('/admin/database', (req, res) => {
+  try {
+    const pdfs = db.prepare('SELECT * FROM pdfs ORDER BY upload_date DESC').all();
+    const total = pdfs.length;
+    
+    // Calculate total file size
+    const totalSize = pdfs.reduce((sum, pdf) => sum + pdf.file_size, 0);
+    
+    // Format data for display
+    const formattedPdfs = pdfs.map(pdf => ({
+      ...pdf,
+      file_size_kb: (pdf.file_size / 1024).toFixed(2),
+      file_size_mb: (pdf.file_size / (1024 * 1024)).toFixed(2),
+      upload_date_formatted: new Date(pdf.upload_date).toLocaleString()
+    }));
+
+    // Return HTML page for admin view
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocBrain - Admin Database View</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        .stat-card {
+            flex: 1;
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        tr:hover {
+            background: #f9f9f9;
+        }
+        .id-cell {
+            font-family: monospace;
+            font-size: 11px;
+            color: #666;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .name-cell {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 12px;
+        }
+        .btn-view {
+            background: #667eea;
+            color: white;
+        }
+        .btn-download {
+            background: #48bb78;
+            color: white;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        .refresh-btn {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .refresh-btn:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 DocBrain - Database Admin View</h1>
+        <p style="color: #666; margin-bottom: 20px;">Complete database table view</p>
+        
+        <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-label">Total PDFs</div>
+                <div class="stat-value">${total}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Size</div>
+                <div class="stat-value">${(totalSize / (1024 * 1024)).toFixed(2)} MB</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Database Records</div>
+                <div class="stat-value">${total}</div>
+            </div>
+        </div>
+
+        ${total === 0 ? `
+            <div class="empty-state">
+                <h2>No PDFs in database yet</h2>
+                <p>Upload PDFs through the frontend to see them here.</p>
+            </div>
+        ` : `
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Original Name</th>
+                        <th>Stored Filename</th>
+                        <th>File Size</th>
+                        <th>Upload Date</th>
+                        <th>MIME Type</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${formattedPdfs.map(pdf => `
+                        <tr>
+                            <td class="id-cell" title="${pdf.id}">${pdf.id.substring(0, 20)}...</td>
+                            <td class="name-cell" title="${pdf.original_name}">${pdf.original_name}</td>
+                            <td class="name-cell" title="${pdf.stored_filename}">${pdf.stored_filename}</td>
+                            <td>${pdf.file_size_kb} KB<br><small style="color: #999;">${pdf.file_size_mb} MB</small></td>
+                            <td>${pdf.upload_date_formatted}</td>
+                            <td>${pdf.mime_type}</td>
+                            <td class="actions">
+                                <a href="/api/pdfs/${pdf.id}/download" class="btn btn-download" target="_blank">Download</a>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `}
+    </div>
+</body>
+</html>
+    `;
+
+    res.send(html);
+  } catch (error) {
+    console.error('Error fetching database:', error);
+    res.status(500).send(`
+      <html>
+        <body style="font-family: sans-serif; padding: 40px;">
+          <h1>Error</h1>
+          <p>Failed to fetch database: ${error.message}</p>
+        </body>
+      </html>
+    `);
   }
 });
 
