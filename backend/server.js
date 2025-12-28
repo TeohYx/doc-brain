@@ -1,4 +1,4 @@
-// server.js (PostgreSQL version)
+// server.js (Production-ready: Render + Supabase + Vercel)
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
@@ -10,15 +10,28 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// PostgreSQL connection pool
+// ============================
+// PostgreSQL (Supabase) Setup
+// ============================
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  connectionString: process.env.DATABASE_URL, // Must be Supabase URL
+  ssl: { rejectUnauthorized: false },         // Required for Supabase
+  family: 4                                  // Force IPv4
 });
 
+// Test DB connection on startup
+pool.connect()
+  .then(client => {
+    console.log('✅ Connected to PostgreSQL successfully.');
+    client.release();
+  })
+  .catch(err => console.error('❌ PostgreSQL connection error:', err.stack));
+
+// ============================
 // Middleware
+// ============================
+
+// CORS
 const allowedOrigins = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
   : ['http://localhost:3000'];
@@ -26,27 +39,27 @@ const allowedOrigins = process.env.FRONTEND_URL
 const vercelPreviewPattern = /https:\/\/.*\.vercel\.app$/;
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    if (vercelPreviewPattern.test(origin)) return callback(null, true);
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || vercelPreviewPattern.test(origin)) return callback(null, true);
     console.log('CORS blocked origin:', origin);
-    console.log('Allowed origins:', allowedOrigins);
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 };
+
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Ensure uploads directory exists
+// ============================
+// Uploads Setup
+// ============================
+
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-// Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => cb(null, `${uuidv4()}-${file.originalname}`)
@@ -61,13 +74,19 @@ const upload = multer({
   }
 });
 
-// Helper function to query PostgreSQL
+// ============================
+// Helper Function
+// ============================
 async function query(sql, params) {
   const res = await pool.query(sql, params);
   return res.rows;
 }
 
-// Root route
+// ============================
+// Routes
+// ============================
+
+// Root
 app.get('/', (req, res) => {
   res.json({
     message: 'DocBrain API Server',
@@ -103,12 +122,7 @@ app.post('/api/upload', upload.single('pdf'), async (req, res) => {
 
     res.status(201).json({
       message: 'PDF uploaded successfully',
-      pdf: {
-        id: pdfId,
-        originalName: req.file.originalname,
-        fileSize: req.file.size,
-        uploadDate: uploadDate
-      }
+      pdf: { id: pdfId, originalName: req.file.originalname, fileSize: req.file.size, uploadDate }
     });
   } catch (error) {
     console.error('Upload error:', error);
@@ -124,64 +138,6 @@ app.get('/api/pdfs', async (req, res) => {
   } catch (error) {
     console.error('Error fetching PDFs:', error);
     res.status(500).json({ error: 'Failed to fetch PDFs', details: error.message });
-  }
-});
-
-// Admin: View database table
-app.get('/admin/database', async (req, res) => {
-  try {
-    const pdfs = await query('SELECT * FROM pdfs ORDER BY upload_date DESC');
-    const total = pdfs.length;
-    const totalSize = pdfs.reduce((sum, pdf) => sum + Number(pdf.file_size), 0);
-
-    const formattedPdfs = pdfs.map(pdf => ({
-      ...pdf,
-      file_size_kb: (pdf.file_size / 1024).toFixed(2),
-      file_size_mb: (pdf.file_size / (1024 * 1024)).toFixed(2),
-      upload_date_formatted: new Date(pdf.upload_date).toLocaleString()
-    }));
-
-    // HTML rendering same as your original code
-    let rowsHtml = formattedPdfs.map(pdf => `
-      <tr>
-        <td class="id-cell" title="${pdf.id}">${pdf.id.substring(0, 20)}...</td>
-        <td class="name-cell" title="${pdf.original_name}">${pdf.original_name}</td>
-        <td class="name-cell" title="${pdf.stored_filename}">${pdf.stored_filename}</td>
-        <td>${pdf.file_size_kb} KB<br><small style="color: #999;">${pdf.file_size_mb} MB</small></td>
-        <td>${pdf.upload_date_formatted}</td>
-        <td>${pdf.mime_type}</td>
-        <td class="actions">
-          <a href="/api/pdfs/${pdf.id}/download" class="btn btn-download" target="_blank">Download</a>
-        </td>
-      </tr>
-    `).join('');
-
-    const html = `
-      <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>DocBrain - Admin Database View</title>
-      <style>/* Styles omitted for brevity; keep your existing CSS */</style></head>
-      <body>
-        <div class="container">
-          <h1>📊 DocBrain - Database Admin View</h1>
-          <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
-          <div class="stats">
-            <div class="stat-card"><div class="stat-label">Total PDFs</div><div class="stat-value">${total}</div></div>
-            <div class="stat-card"><div class="stat-label">Total Size</div><div class="stat-value">${(totalSize / (1024 * 1024)).toFixed(2)} MB</div></div>
-          </div>
-          ${total === 0 ? `<div class="empty-state"><h2>No PDFs in database yet</h2></div>` :
-          `<table><thead><tr>
-            <th>ID</th><th>Original Name</th><th>Stored Filename</th><th>File Size</th>
-            <th>Upload Date</th><th>MIME Type</th><th>Actions</th></tr></thead>
-            <tbody>${rowsHtml}</tbody></table>`}
-        </div>
-      </body></html>
-    `;
-
-    res.send(html);
-  } catch (error) {
-    console.error('Error fetching database:', error);
-    res.status(500).send(`<h1>Error: ${error.message}</h1>`);
   }
 });
 
@@ -232,7 +188,53 @@ app.delete('/api/pdfs/:id', async (req, res) => {
   }
 });
 
+// Admin database view (HTML)
+app.get('/admin/database', async (req, res) => {
+  try {
+    const pdfs = await query('SELECT * FROM pdfs ORDER BY upload_date DESC');
+    const total = pdfs.length;
+    const totalSize = pdfs.reduce((sum, pdf) => sum + Number(pdf.file_size), 0);
+
+    const formattedPdfs = pdfs.map(pdf => ({
+      ...pdf,
+      file_size_kb: (pdf.file_size / 1024).toFixed(2),
+      file_size_mb: (pdf.file_size / (1024*1024)).toFixed(2),
+      upload_date_formatted: new Date(pdf.upload_date).toLocaleString()
+    }));
+
+    let rowsHtml = formattedPdfs.map(pdf => `
+      <tr>
+        <td>${pdf.id.substring(0, 20)}...</td>
+        <td>${pdf.original_name}</td>
+        <td>${pdf.stored_filename}</td>
+        <td>${pdf.file_size_kb} KB<br><small>${pdf.file_size_mb} MB</small></td>
+        <td>${pdf.upload_date_formatted}</td>
+        <td>${pdf.mime_type}</td>
+        <td><a href="/api/pdfs/${pdf.id}/download" target="_blank">Download</a></td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <html><head><title>DocBrain Admin</title></head>
+      <body>
+        <h1>📊 DocBrain - Database</h1>
+        <p>Total PDFs: ${total} | Total Size: ${(totalSize/(1024*1024)).toFixed(2)} MB</p>
+        ${total === 0 ? '<p>No PDFs yet</p>' : `<table border="1" cellpadding="5"><thead>
+          <tr><th>ID</th><th>Original Name</th><th>Stored Filename</th>
+          <th>Size</th><th>Upload Date</th><th>MIME Type</th><th>Actions</th></tr>
+        </thead><tbody>${rowsHtml}</tbody></table>`}
+      </body></html>
+    `;
+    res.send(html);
+  } catch (error) {
+    console.error('Error fetching database:', error);
+    res.status(500).send(`<h1>Error: ${error.message}</h1>`);
+  }
+});
+
+// ============================
 // Error handling middleware
+// ============================
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
     return res.status(400).json({ error: 'File too large. Maximum size is 50MB' });
@@ -240,6 +242,9 @@ app.use((error, req, res, next) => {
   res.status(500).json({ error: error.message || 'Internal server error' });
 });
 
+// ============================
+// Start server
+// ============================
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
