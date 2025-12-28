@@ -19,6 +19,9 @@ const pool = new Pool({
   family: 4                                  // Force IPv4
 });
 
+const dns = require('node:dns');
+dns.setDefaultResultOrder('ipv4first');
+
 // Test DB connection on startup
 pool.connect()
   .then(client => {
