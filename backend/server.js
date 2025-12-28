@@ -66,6 +66,23 @@ db.exec(`
 
 // Routes
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'DocBrain API Server',
+    status: 'running',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      upload: 'POST /api/upload',
+      getAllPdfs: 'GET /api/pdfs',
+      getPdfById: 'GET /api/pdfs/:id',
+      downloadPdf: 'GET /api/pdfs/:id/download',
+      deletePdf: 'DELETE /api/pdfs/:id'
+    }
+  });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' });
